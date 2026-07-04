@@ -189,6 +189,21 @@
   }
   .estimate.show{display:flex;}
   .estimate .sw{width:28px;height:28px;border-radius:8px;border:1px solid rgba(0,0,0,.1);flex:0 0 auto;}
+  /* AIの目安（自動アドバイス） */
+  #adviceCard{border-left:6px solid var(--accent);}
+  #adviceCard.calm{border-left-color:#8bbfa8;background:var(--accent-soft);}
+  #adviceCard.watch{border-left-color:var(--warn);background:var(--warn-bg);}
+  #adviceCard.contact{border-left-color:#d99a3c;background:var(--warn-bg);}
+  #adviceCard.urgent{border-left-color:var(--alert);background:var(--alert-bg);}
+  #adviceCard h2{font-size:18px;margin-bottom:8px;flex-wrap:wrap;}
+  #adviceCard ul{margin:0 0 10px;padding-left:1.15em;}
+  #adviceCard li{margin-bottom:7px;font-size:16px;line-height:1.55;}
+  #adviceCard .disc{font-size:13px;color:var(--ink-soft);line-height:1.5;border-top:1px dashed var(--line);padding-top:8px;}
+  #adviceCard .tel{
+    display:flex;align-items:center;justify-content:center;gap:8px;background:var(--alert);color:#fff;
+    min-height:54px;border-radius:12px;font-size:18px;font-weight:700;text-decoration:none;margin:4px 0 12px;
+  }
+
   .hist-thumb{width:42px;height:42px;border-radius:10px;object-fit:cover;border:1px solid var(--line);flex:0 0 auto;background:#eee;}
   .photo-strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;}
   .photo-strip figure{margin:0;flex:0 0 auto;width:96px;text-align:center;}
@@ -295,6 +310,8 @@
         <div class="sub">あてはまるものに「はい」を選んでください</div>
         <div id="symptomList"></div>
       </div>
+
+      <div class="card" id="adviceCard" style="display:none"></div>
 
       <div class="card">
         <h2>✍️ ひとことメモ<span style="font-weight:400;font-size:14px;color:var(--ink-soft);"> （任意）</span></h2>
@@ -451,7 +468,6 @@ const URINE = [
 
 const SYMPTOMS = [
   {key:"pain",      label:"排尿のときの痛み"},
-  {key:"frequency", label:"トイレの回数が増えた"},
   {key:"residual",  label:"残尿感（出きらない感じ）"},
   {key:"fever",     label:"37.5度以上の熱"},
   {key:"backpain",  label:"腰や背中の痛み"}
@@ -590,6 +606,96 @@ function resetDraftFromToday(){
 /* ============================================================
    記録画面
    ============================================================ */
+/* ============================================================
+   AIの目安（自動アドバイス）— 記録内容から「違和感」を検知し受診の目安を助言
+   ※あくまで補助。最終的な医療判断は担当医。写真・データは端末外に送信しない。
+   ============================================================ */
+function symLabel(key){ const s=SYMPTOMS.find(x=>x.key===key); return s?s.label:key; }
+function priorLevels(days){
+  const out=[]; const t=new Date();
+  for(let i=1;i<=days;i++){ const d=new Date(t); d.setDate(d.getDate()-i); const r=DB.records[fmt(d)]; if(r&&r.urineLevel) out.push(r.urineLevel); }
+  return out; // 直近が先頭
+}
+function yesterdayRecord(){ const d=new Date(); d.setDate(d.getDate()-1); return DB.records[fmt(d)]; }
+
+function computeAdvice(level, sym){
+  const msgs=[]; let tier="calm", showPhone=false;
+  const order={calm:0,watch:1,contact:2,urgent:3};
+  const bump=t=>{ if(order[t]>order[tier]) tier=t; };
+  const prior=yesterdayRecord();
+  const rec=priorLevels(6);
+
+  // 血尿のサイン
+  if(level>=7){ bump("urgent"); showPhone=true; msgs.push("尿に血が混じっているサインがあります。あわてず、本日中にかかりつけの泌尿器科へご連絡ください。"); }
+  else if(level>=6){ bump("urgent"); showPhone=true; msgs.push("尿にうっすら赤み・ピンクが見られます。念のため、本日中にご連絡いただくと安心です。"); }
+
+  // 腰背部痛＋発熱（腎盂腎炎・水腎症のサイン）
+  if(sym.backpain && sym.fever){ bump("urgent"); showPhone=true; msgs.push("腰・背中の痛みと熱が重なっています。腎臓の炎症などのサインのことがあるため、早めの受診が安心です。"); }
+  else if(sym.fever){
+    if(sym.pain||sym.residual){ bump("contact"); msgs.push("熱と排尿の症状が重なっています。水分をとって休み、早めに相談すると安心です。"); }
+    else { bump("watch"); msgs.push("熱があります。水分をとって休み、続くようなら相談しましょう。"); }
+  }
+
+  // 排尿の症状
+  const uSym=[]; if(sym.pain)uSym.push("排尿のときの痛み"); if(sym.residual)uSym.push("残尿感");
+  if(uSym.length && !sym.fever){ bump("watch"); msgs.push(uSym.join("・")+"があります。"+(level>=4?"色も濃いめです。まず水分をとって様子をみましょう。":"水分をとって、続くようなら相談しましょう。")); }
+
+  // 急な色の変化（違和感検知）
+  if(level && rec.length>=2){
+    const use=rec.slice(0,5); const avg=use.reduce((a,b)=>a+b,0)/use.length;
+    if(level-avg>=2 && level>=4){ bump("watch"); msgs.push("ここ数日よりも急に色が濃くなっています。"+(level>=5?"まず水分をとり、それでも濃いままなら相談しましょう。":"水分をとって様子をみましょう。")); }
+  }
+  // 濃い色が続いている
+  let streak=(level>=4)?1:0;
+  for(const l of rec){ if(l>=4) streak++; else break; }
+  if(streak>=3){ bump("watch"); msgs.push("濃いめの色が"+streak+"日続いています。水分不足のことが多いですが、続くようなら次の診察でお伝えください。"); }
+
+  // 症状が2日続いている
+  if(prior && prior.symptoms){
+    const persist=["pain","residual","fever","backpain"].filter(k=>sym[k]&&prior.symptoms[k]).map(symLabel);
+    if(persist.length){ bump("contact"); msgs.push(persist.join("・")+"が2日続いています。次の診察でお医者さんにお伝えください。"); }
+  }
+  // 症状が重なっている
+  const cnt=["pain","residual","fever","backpain"].filter(k=>sym[k]).length;
+  if(cnt>=2) bump("contact");
+
+  // 平穏なとき
+  if(tier==="calm"){
+    if(level && level<=3) msgs.push("尿の色は落ち着いていて、気になる症状もありません。今日の調子で大丈夫です。");
+    else if(level && level<=5) msgs.push("やや濃いめですが、心配な赤みや症状はありません。水分をとって、いつも通りで大丈夫です。");
+    else msgs.push("気になる変化はありません。いつも通りで大丈夫です。");
+  }
+  return {tier, msgs:[...new Set(msgs)], showPhone};
+}
+
+function renderAdvice(){
+  const card=document.getElementById("adviceCard");
+  const hasInput = draft.urineLevel!==null || draft.photo || SYMPTOMS.some(s=>draft.symptoms[s.key]);
+  if(!hasInput){ card.style.display="none"; card.innerHTML=""; return; }
+  const a=computeAdvice(draft.urineLevel, draft.symptoms);
+  const meta={
+    calm:{ic:"🍵",t:"落ち着いています"},
+    watch:{ic:"🌱",t:"少し気にかけましょう"},
+    contact:{ic:"📞",t:"相談すると安心です"},
+    urgent:{ic:"📞",t:"受診・連絡をおすすめします"}
+  }[a.tier];
+  let phone="";
+  if(a.showPhone){
+    const p=DB.settings.hospPhone;
+    phone = p ? '<a class="tel" href="tel:'+p.replace(/[^0-9+]/g,"")+'">📞 '+escapeHtml(p)+' に電話する</a>'
+              : '<a class="tel" href="#" id="advSetPhone">📞 病院の電話番号を設定する</a>';
+  }
+  card.className="card "+a.tier;
+  card.style.display="block";
+  card.innerHTML=
+    '<h2>'+meta.ic+' '+meta.t+'<span style="font-weight:400;font-size:13px;color:var(--ink-soft)">　AIからの目安</span></h2>'+
+    '<ul>'+a.msgs.map(m=>'<li>'+escapeHtml(m)+'</li>').join("")+'</ul>'+
+    phone+
+    '<div class="disc">※これは記録の内容からの自動的な目安です。あくまで補助で、最終的な判断は担当の先生にご相談ください。気になるときは、この目安に関わらず遠慮なく受診してください。</div>';
+  const sp=card.querySelector("#advSetPhone");
+  if(sp) sp.onclick=e=>{ e.preventDefault(); openSettings(); };
+}
+
 function renderPhotoArea(){
   const area=document.getElementById("photoArea");
   if(draft.photo){
@@ -628,7 +734,7 @@ function renderUrine(){
       '<div class="check">✓</div>';
     t.onclick = ()=>{
       draft.urineLevel = u.lvl;
-      renderUrine();
+      renderUrine(); renderAdvice();
       if(u.lvl>=6){ showUrineAlert(u.lvl); }
     };
     grid.appendChild(t);
@@ -649,8 +755,8 @@ function renderSymptoms(){
         '<button class="'+(val===true?"on-yes":"")+'" data-v="yes">はい</button>'+
       '</div>';
     const [noBtn,yesBtn] = row.querySelectorAll(".toggle button");
-    noBtn.onclick = ()=>{ draft.symptoms[s.key]=false; renderSymptoms(); };
-    yesBtn.onclick = ()=>{ draft.symptoms[s.key]=true; renderSymptoms(); checkPriorityAlert(); };
+    noBtn.onclick = ()=>{ draft.symptoms[s.key]=false; renderSymptoms(); renderAdvice(); };
+    yesBtn.onclick = ()=>{ draft.symptoms[s.key]=true; renderSymptoms(); renderAdvice(); checkPriorityAlert(); };
     list.appendChild(row);
   });
 }
@@ -938,7 +1044,7 @@ function drawChart(dates){
    エクスポート
    ============================================================ */
 function exportCSV(){
-  const rows=[["日付","尿色レベル","尿色の名前","写真","排尿時痛","頻尿悪化","残尿感","発熱37.5+","腰背部痛","腰背部痛＋発熱","メモ"]];
+  const rows=[["日付","尿色レベル","尿色の名前","写真","排尿時痛","残尿感","発熱37.5+","腰背部痛","腰背部痛＋発熱","メモ"]];
   Object.keys(DB.records).sort().forEach(d=>{
     const r=DB.records[d], s=r.symptoms||{};
     rows.push([
@@ -946,7 +1052,7 @@ function exportCSV(){
       r.urineLevel||"",
       r.urineLevel?URINE[r.urineLevel-1].name:"",
       PHOTOS[d]?"あり":"",
-      s.pain?"はい":"", s.frequency?"はい":"", s.residual?"はい":"", s.fever?"はい":"", s.backpain?"はい":"",
+      s.pain?"はい":"", s.residual?"はい":"", s.fever?"はい":"", s.backpain?"はい":"",
       (s.backpain&&s.fever)?"該当":"",
       (r.note||"").replace(/"/g,'""')
     ]);
@@ -1082,7 +1188,7 @@ function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<"
 
 function renderAll(){
   renderPhotoArea(); renderEstimate();
-  renderUrine(); renderSymptoms(); renderRecordBanners();
+  renderUrine(); renderSymptoms(); renderAdvice(); renderRecordBanners();
   document.getElementById("noteInput").value=draft.note;
   document.getElementById("savedHint").textContent = DB.records[todayStr()] ? "きょうの記録は保存済みです" : "";
 }
@@ -1117,7 +1223,7 @@ async function init(){
       const {dataURL,level}=await processPhoto(f);
       draft.photo=dataURL; draft.estimated=level;
       if(level) draft.urineLevel=level;
-      renderPhotoArea(); renderEstimate(); renderUrine();
+      renderPhotoArea(); renderEstimate(); renderUrine(); renderAdvice();
       if(draft.urineLevel>=6) showUrineAlert(draft.urineLevel);
       else toast("写真をとりました");
     }catch(err){ toast("写真を読みこめませんでした"); }
