@@ -624,54 +624,118 @@ function priorLevels(days){
   return out; // 直近が先頭
 }
 function yesterdayRecord(){ const d=new Date(); d.setDate(d.getDate()-1); return DB.records[fmt(d)]; }
+// 直近（過去）のBCG注入からの経過日数。未来/未登録はnull
+function recentBCGDays(){
+  let best=null;
+  DB.schedules.forEach(s=>{ if(s.type==="bcg"){ const d=daysBetween(s.date, todayStr()); if(d>=0 && (best===null||d<best)) best=d; } });
+  return best;
+}
+// 今日を含む、ある症状の連続日数
+function symptomStreak(key, sym){
+  if(!sym[key]) return 0;
+  let n=1; const t=new Date();
+  for(let i=1;i<120;i++){ const d=new Date(t); d.setDate(d.getDate()-i); const r=DB.records[fmt(d)]; if(r&&r.symptoms&&r.symptoms[key]) n++; else break; }
+  return n;
+}
+// 排尿の刺激症状（痛み or 残尿感）の連続日数
+function irritativeStreak(sym){
+  if(!(sym.pain||sym.residual)) return 0;
+  let n=1; const t=new Date();
+  for(let i=1;i<120;i++){ const d=new Date(t); d.setDate(d.getDate()-i); const s=(DB.records[fmt(d)]||{}).symptoms; if(s&&(s.pain||s.residual)) n++; else break; }
+  return n;
+}
+// 尿色が閾値以上で続いている連続日数（今日を含む）
+function sustainedCount(level, thr){
+  if(!(level>=thr)) return 0;
+  let n=1; const t=new Date();
+  for(let i=1;i<120;i++){ const d=new Date(t); d.setDate(d.getDate()-i); const r=DB.records[fmt(d)]; if(r&&r.urineLevel>=thr) n++; else break; }
+  return n;
+}
 
+// 膀胱癌（CIS・2nd TUR後・BCG中）の再発サーベイランス向けに、厳しめ（見逃し回避優先）に判定
 function computeAdvice(level, sym){
   const msgs=[]; let tier="calm", showPhone=false;
   const order={calm:0,watch:1,contact:2,urgent:3};
   const bump=t=>{ if(order[t]>order[tier]) tier=t; };
-  const prior=yesterdayRecord();
-  const rec=priorLevels(6);
+  const has=k=>!!sym[k];
+  const rec=priorLevels(6);        // 直近が先頭（今日を除く）
+  const bcg=recentBCGDays();       // 直近BCGからの経過日数 or null
 
-  // 血尿のサイン
-  if(level>=7){ bump("urgent"); showPhone=true; msgs.push("尿に血が混じっているサインがあります。あわてず、本日中にかかりつけの泌尿器科へご連絡ください。"); }
-  else if(level>=6){ bump("urgent"); showPhone=true; msgs.push("尿にうっすら赤み・ピンクが見られます。念のため、本日中にご連絡いただくと安心です。"); }
-
-  // 腰背部痛＋発熱（腎盂腎炎・水腎症のサイン）
-  if(sym.backpain && sym.fever){ bump("urgent"); showPhone=true; msgs.push("腰・背中の痛みと熱が重なっています。腎臓の炎症などのサインのことがあるため、早めの受診が安心です。"); }
-  else if(sym.fever){
-    if(sym.pain||sym.residual){ bump("contact"); msgs.push("熱と排尿の症状が重なっています。水分をとって休み、早めに相談すると安心です。"); }
-    else { bump("watch"); msgs.push("熱があります。水分をとって休み、続くようなら相談しましょう。"); }
+  // 1) 血尿 — 再発を知らせる最重要サイン。ごく少量でも当日連絡
+  if(level>=7){
+    bump("urgent"); showPhone=true;
+    msgs.push("尿にはっきり血が混じっています。血尿は再発を知らせる最も大切なサインです。少量でも様子を見ず、本日中に主治医（泌尿器科）へご連絡ください。");
+    if(has("residual")) msgs.push("尿が出にくい・残る感じもあります。血のかたまりで詰まることがあり、尿が出せないときは夜間でも救急にご相談を。");
+  } else if(level>=6){
+    bump("urgent"); showPhone=true;
+    msgs.push("尿にうっすら赤み・ピンクが見られます。ごく少量の血でも再発の大切なサインになり得ます。本日中に泌尿器科へご連絡ください。");
   }
 
-  // 排尿の症状
-  const uSym=[]; if(sym.pain)uSym.push("排尿のときの痛み"); if(sym.residual)uSym.push("残尿感");
-  if(uSym.length && !sym.fever){ bump("watch"); msgs.push(uSym.join("・")+"があります。"+(level>=4?"色も濃いめです。まず水分をとって様子をみましょう。":"水分をとって、続くようなら相談しましょう。")); }
-
-  // 急な色の変化（違和感検知）
-  if(level && rec.length>=2){
-    const use=rec.slice(0,5); const avg=use.reduce((a,b)=>a+b,0)/use.length;
-    if(level-avg>=2 && level>=4){ bump("watch"); msgs.push("ここ数日よりも急に色が濃くなっています。"+(level>=5?"まず水分をとり、それでも濃いままなら相談しましょう。":"水分をとって様子をみましょう。")); }
+  // 2) 発熱 — 治療中は感染・BCG全身反応の初期サイン。厳しめに扱う
+  if(has("fever")){
+    if(has("backpain")){
+      bump("urgent"); showPhone=true;
+      msgs.push("背中・腰の痛みと発熱が重なっています。腎盂腎炎・水腎症のサインのことがあり、本日中の受診・連絡が安心です。");
+    }
+    if(bcg!==null && bcg<=3){
+      bump("urgent"); showPhone=true;
+      msgs.push("BCG注入から"+(bcg===0?"本日":bcg+"日")+"での発熱です。BCGによる全身反応（まれに重い感染）のことがあります。震え・強い倦怠感や高い熱があれば、夜間でも救急を含めご連絡ください。");
+    }
+    if(order[tier]<order["contact"]){
+      bump("contact"); showPhone=true;
+      msgs.push("発熱があります。治療中の発熱は感染などの初期サインのことがあるため、本日中に泌尿器科へ電話でご相談ください。水分をとって休みましょう。");
+    }
   }
-  // 濃い色が続いている
-  let streak=(level>=4)?1:0;
-  for(const l of rec){ if(l>=4) streak++; else break; }
-  if(streak>=3){ bump("watch"); msgs.push("濃いめの色が"+streak+"日続いています。水分不足のことが多いですが、続くようなら次の診察でお伝えください。"); }
 
-  // 症状が2日続いている
-  if(prior && prior.symptoms){
-    const persist=["pain","residual","fever","backpain"].filter(k=>sym[k]&&prior.symptoms[k]).map(symLabel);
-    if(persist.length){ bump("contact"); msgs.push(persist.join("・")+"が2日続いています。次の診察でお医者さんにお伝えください。"); }
+  // 3) 排尿の刺激症状 — BCG副反応とCISの両方で出る。持続・悪化を厳しく見る
+  const irr=[]; if(has("pain"))irr.push("排尿時の痛み"); if(has("residual"))irr.push("残尿感");
+  if(irr.length){
+    const days=irritativeStreak(sym);
+    if(days>=3){ bump("urgent"); showPhone=true; msgs.push(irr.join("・")+"が"+days+"日続いています。長引く排尿の症状は放置せず、受診してご相談ください。"); }
+    else if(days===2){ bump("contact"); showPhone=true; msgs.push(irr.join("・")+"が2日続いています。BCGの副反応のことも多いですが、念のため本日中に泌尿器科へご相談ください。"); }
+    else if(irr.length>=2){ bump("contact"); showPhone=true; msgs.push("排尿時の痛みと残尿感が同時にあります。続くようなら本日中にご相談を。まずは水分をとって様子をみましょう。"); }
+    else { bump("watch"); if(order[tier]<order["contact"]) msgs.push(irr[0]+"があります。BCG後によく出る症状ですが、2日以上続く・強くなるときは相談しましょう。忘れず記録を。"); }
   }
-  // 症状が重なっている
-  const cnt=["pain","residual","fever","backpain"].filter(k=>sym[k]).length;
-  if(cnt>=2) bump("contact");
 
-  // 平穏なとき
+  // 4) 背中・腰の痛み（発熱なし）— 上部尿路のサインを見落とさない
+  if(has("backpain") && !has("fever")){
+    const bp=symptomStreak("backpain",sym);
+    if(bp>=2){ bump("contact"); showPhone=true; msgs.push("背中・腰の痛みが"+bp+"日続いています。腎臓側の変化のことがあり、本日中にご相談ください。"); }
+    else { bump("watch"); msgs.push("背中・腰の痛みがあります。続くとき・熱を伴うときは早めにご相談ください。"); }
+  }
+
+  // 5) 色の変化 — 血尿の見落とし防止に厳しめ（オレンジも軽視しない）
+  if(level>=5 && level<6){
+    const isNew = rec.length>=1 ? (level-rec[0]>=1) : true;
+    if(isNew || sustainedCount(level,5)>=2){
+      bump("contact"); showPhone=true;
+      msgs.push("尿がオレンジ色まで濃くなっています。濃縮のこともありますが、血が混じり始めた色の可能性もあります。水分をとっても濃いままなら本日中にご相談ください。赤み・ピンクに近づくときはすぐ連絡を。");
+    } else {
+      bump("watch");
+      msgs.push("尿がやや濃い（オレンジ）です。まず水分をとって色を見てください。赤み・ピンクに近づくときはすぐご連絡を。");
+    }
+  }
+  if(level>=4 && level<5 && rec.length>=2){
+    const use=rec.slice(0,5), avg=use.reduce((a,b)=>a+b,0)/use.length;
+    if(level-avg>=2){ bump("watch"); msgs.push("ここ数日より急に色が濃くなっています。水分をとって様子をみて、赤みが出たらすぐ連絡を。"); }
+  }
   if(tier==="calm"){
-    if(level && level<=3) msgs.push("尿の色は落ち着いていて、気になる症状もありません。今日の調子で大丈夫です。");
-    else if(level && level<=5) msgs.push("やや濃いめですが、心配な赤みや症状はありません。水分をとって、いつも通りで大丈夫です。");
+    const hs=sustainedCount(level,4);
+    if(hs>=3){ bump("watch"); msgs.push("濃いめの色が"+hs+"日続いています。水分を意識し、続くようなら次回受診でお伝えください。"); }
+  }
+
+  // 6) 症状の重なり
+  const cnt=["pain","residual","fever","backpain"].filter(has).length;
+  if(cnt>=2 && order[tier]<order["contact"]){ bump("contact"); showPhone=true; }
+
+  // 7) 平穏なとき
+  if(tier==="calm"){
+    if(level && level<=3) msgs.push("尿の色は落ち着いていて、気になる症状もありません。今日の調子で大丈夫です。引き続き毎日の記録を続けましょう。");
+    else if(level===4) msgs.push("尿はやや濃いめですが、心配な赤みや症状はありません。水分をとって、いつも通りで大丈夫です。");
+    else if(!level) msgs.push("気になる症状はありません。写真をとると、色の変化も見守れます。");
     else msgs.push("気になる変化はありません。いつも通りで大丈夫です。");
   }
+
   return {tier, msgs:[...new Set(msgs)], showPhone};
 }
 
@@ -682,9 +746,9 @@ function renderAdvice(){
   const a=computeAdvice(draft.urineLevel, draft.symptoms);
   const meta={
     calm:{ic:"🍵",t:"落ち着いています"},
-    watch:{ic:"🌱",t:"少し気にかけましょう"},
-    contact:{ic:"📞",t:"相談すると安心です"},
-    urgent:{ic:"📞",t:"受診・連絡をおすすめします"}
+    watch:{ic:"🌱",t:"記録して見守りましょう"},
+    contact:{ic:"📞",t:"本日中に泌尿器科へ相談を"},
+    urgent:{ic:"📞",t:"すぐに泌尿器科へ連絡しましょう"}
   }[a.tier];
   let phone="";
   if(a.showPhone){
