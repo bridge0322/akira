@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#2f4f43">
+<title>見張り番</title>
+<style>
+  :root{
+    --bg:#f4efe3;          /* 生成り背景 */
+    --bg-card:#fbf8f0;
+    --ink:#33322c;          /* 文字 */
+    --ink-soft:#6b6a60;
+    --accent:#2f4f43;       /* 深緑 */
+    --accent-soft:#e3ede7;
+    --line:#dcd6c6;
+    --warn:#f4d35e;         /* 黄色警告 */
+    --warn-bg:#fbf3d3;
+    --alert:#c9683f;        /* 強い連絡（威圧的な赤は避ける） */
+    --alert-bg:#f7e7de;
+    --shadow:0 2px 10px rgba(60,55,40,.08);
+    --radius:16px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;
+    font-size:18px;
+    line-height:1.6;
+    -webkit-text-size-adjust:100%;
+    padding-bottom:88px;
+  }
+  h1,h2,h3{margin:0;font-weight:700;}
+  button{font-family:inherit;font-size:inherit;cursor:pointer;color:var(--ink);}
+  .app{max-width:560px;margin:0 auto;}
+
+  /* ヘッダー */
+  header{
+    background:var(--accent);
+    color:#fbf8f0;
+    padding:14px 18px;
+    display:flex;align-items:center;justify-content:space-between;
+    position:sticky;top:0;z-index:20;
+  }
+  header .title{font-size:22px;letter-spacing:.08em;}
+  header .title small{font-size:13px;opacity:.85;font-weight:400;letter-spacing:0;}
+  header .gear{
+    background:rgba(255,255,255,.15);border:none;color:#fbf8f0;
+    width:48px;height:48px;border-radius:12px;font-size:22px;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  main{padding:16px;}
+  .screen{display:none;animation:fade .25s ease;}
+  .screen.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+
+  .card{
+    background:var(--bg-card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:18px;
+    margin-bottom:16px;
+    box-shadow:var(--shadow);
+  }
+  .card h2{font-size:19px;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+  .card .sub{color:var(--ink-soft);font-size:15px;margin-bottom:14px;}
+  .todayLabel{color:var(--ink-soft);font-size:15px;}
+
+  /* 予定バナー */
+  .banner{
+    border-radius:14px;padding:14px 16px;margin-bottom:12px;
+    display:flex;align-items:center;gap:10px;font-size:17px;
+    border:1px solid transparent;
+  }
+  .banner.info{background:var(--accent-soft);border-color:#cfe0d7;color:#254237;}
+  .banner.warn{background:var(--warn-bg);border-color:#ecdca0;color:#6d5a1c;}
+  .banner .bico{font-size:22px;flex:0 0 auto;}
+
+  /* 尿色スケール */
+  .urine-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
+  .urine-tile{
+    border:2px solid var(--line);
+    border-radius:14px;
+    padding:12px;min-height:96px;
+    display:flex;flex-direction:column;justify-content:space-between;
+    background:var(--bg-card);
+    text-align:left;position:relative;transition:transform .08s,border-color .15s;
+  }
+  .urine-tile:active{transform:scale(.97);}
+  .urine-tile.selected{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  .urine-tile .swatch{
+    width:100%;height:44px;border-radius:10px;border:1px solid rgba(0,0,0,.08);
+    margin-bottom:8px;
+  }
+  .urine-tile .lvl{font-size:16px;font-weight:700;}
+  .urine-tile .nm{font-size:14px;color:var(--ink-soft);line-height:1.35;}
+  .urine-tile .check{
+    position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;
+    background:var(--accent);color:#fff;display:none;align-items:center;justify-content:center;font-size:15px;
+  }
+  .urine-tile.selected .check{display:flex;}
+
+  /* 症状トグル */
+  .symptom{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:12px 4px;border-bottom:1px solid var(--line);
+  }
+  .symptom:last-child{border-bottom:none;}
+  .symptom .name{font-size:17px;flex:1;}
+  .toggle{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden;flex:0 0 auto;}
+  .toggle button{
+    background:var(--bg-card);border:none;padding:0 18px;height:48px;min-width:64px;
+    font-size:16px;color:var(--ink-soft);
+  }
+  .toggle button.on-no{background:var(--accent-soft);color:#254237;font-weight:700;}
+  .toggle button.on-yes{background:var(--warn);color:#5b4a12;font-weight:700;}
+
+  textarea, input[type=text], input[type=tel], input[type=date], select{
+    width:100%;font-size:17px;padding:12px;border:1px solid var(--line);
+    border-radius:12px;background:#fff;color:var(--ink);
+  }
+  textarea{min-height:60px;resize:vertical;}
+  label.fld{display:block;font-size:15px;color:var(--ink-soft);margin:12px 0 6px;}
+
+  .btn{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    width:100%;min-height:56px;border:none;border-radius:14px;
+    background:var(--accent);color:#fbf8f0;font-size:19px;font-weight:700;
+    box-shadow:var(--shadow);
+  }
+  .btn:active{opacity:.92;}
+  .btn.secondary{background:var(--accent-soft);color:#254237;border:1px solid #cfe0d7;box-shadow:none;}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line);box-shadow:none;}
+  .btn-row{display:flex;gap:10px;}
+  .btn-row .btn{flex:1;}
+
+  /* ねぎらいトースト */
+  .toast{
+    position:fixed;left:50%;bottom:104px;transform:translateX(-50%) translateY(20px);
+    background:var(--accent);color:#fbf8f0;padding:14px 22px;border-radius:30px;
+    font-size:17px;box-shadow:0 6px 20px rgba(47,79,67,.35);opacity:0;pointer-events:none;
+    transition:opacity .3s,transform .3s;z-index:60;max-width:90%;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* 全画面アラート */
+  .overlay{
+    position:fixed;inset:0;background:rgba(40,35,30,.55);z-index:80;
+    display:none;align-items:center;justify-content:center;padding:20px;
+  }
+  .overlay.show{display:flex;animation:fade .2s ease;}
+  .alert-box{
+    background:var(--bg-card);border-radius:20px;max-width:420px;width:100%;
+    padding:26px 22px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.3);
+    border-top:8px solid var(--alert);
+  }
+  .alert-box.priority{border-top-color:var(--alert);}
+  .alert-box .ico{font-size:46px;margin-bottom:8px;}
+  .alert-box h2{font-size:23px;color:#8a3f22;margin-bottom:10px;line-height:1.4;}
+  .alert-box p{font-size:17px;color:var(--ink);margin:0 0 18px;line-height:1.6;}
+  .alert-box .tel{
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    background:var(--alert);color:#fff;min-height:60px;border-radius:14px;
+    font-size:20px;font-weight:700;text-decoration:none;margin-bottom:12px;
+  }
+  .alert-box .hosp{font-size:15px;color:var(--ink-soft);margin-bottom:14px;}
+
+  /* 履歴 */
+  .hist-row{
+    display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line);
+  }
+  .hist-row:last-child{border-bottom:none;}
+  .hist-date{font-size:15px;color:var(--ink-soft);width:78px;flex:0 0 auto;}
+  .dot{width:26px;height:26px;border-radius:50%;border:1px solid rgba(0,0,0,.12);flex:0 0 auto;}
+  .hist-tags{display:flex;flex-wrap:wrap;gap:6px;flex:1;}
+  .tag{font-size:13px;padding:3px 9px;border-radius:20px;background:var(--accent-soft);color:#254237;}
+  .tag.warntag{background:var(--warn);color:#5b4a12;font-weight:700;}
+  .tag.alerttag{background:var(--alert-bg);color:#8a3f22;font-weight:700;}
+  .empty{text-align:center;color:var(--ink-soft);padding:30px 10px;font-size:16px;}
+
+  /* まとめ / グラフ */
+  .chart-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  svg.chart{display:block;}
+  .legend{font-size:14px;color:var(--ink-soft);margin-top:6px;display:flex;flex-wrap:wrap;gap:12px;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .legend i{width:14px;height:14px;border-radius:4px;display:inline-block;}
+
+  /* 予定リスト */
+  .sched-item{
+    display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line);
+  }
+  .sched-item:last-child{border-bottom:none;}
+  .sched-item .stype{
+    width:56px;height:56px;border-radius:14px;flex:0 0 auto;display:flex;
+    align-items:center;justify-content:center;font-size:26px;background:var(--accent-soft);
+  }
+  .sched-item .sinfo{flex:1;}
+  .sched-item .sinfo .sname{font-weight:700;}
+  .sched-item .sinfo .sdate{font-size:15px;color:var(--ink-soft);}
+  .sched-item .sdel{
+    background:none;border:1px solid var(--line);border-radius:10px;width:48px;height:48px;
+    color:var(--ink-soft);font-size:18px;flex:0 0 auto;
+  }
+  .countdown{font-size:14px;padding:3px 10px;border-radius:20px;background:var(--accent-soft);color:#254237;}
+  .countdown.soon{background:var(--warn-bg);color:#6d5a1c;font-weight:700;}
+  .countdown.past{background:#eee;color:#999;}
+
+  /* ボトムナビ */
+  nav.tabbar{
+    position:fixed;bottom:0;left:0;right:0;background:var(--bg-card);
+    border-top:1px solid var(--line);display:flex;z-index:30;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  nav.tabbar button{
+    flex:1;background:none;border:none;padding:8px 0 10px;min-height:64px;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    color:var(--ink-soft);font-size:13px;
+  }
+  nav.tabbar button .ic{font-size:24px;line-height:1;}
+  nav.tabbar button.active{color:var(--accent);font-weight:700;}
+  nav.tabbar button.active .ic{transform:translateY(-1px);}
+
+  /* 設定モーダル */
+  .modal{position:fixed;inset:0;background:rgba(40,35,30,.5);z-index:70;display:none;align-items:flex-end;justify-content:center;}
+  .modal.show{display:flex;}
+  .modal .sheet{background:var(--bg-card);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:22px 18px calc(22px + env(safe-area-inset-bottom));}
+  .modal .sheet h2{font-size:20px;margin-bottom:14px;}
+  .modal .sheet .btn-row{margin-top:18px;}
+
+  .hint{font-size:14px;color:var(--ink-soft);margin-top:10px;line-height:1.5;}
+  .divider{height:1px;background:var(--line);margin:16px 0;}
+  .kv{display:flex;justify-content:space-between;font-size:16px;padding:6px 0;}
+  .kv b{font-weight:700;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="title">見張り番<br><small>まいにち1分の記録</small></div>
+    <button class="gear" id="gearBtn" aria-label="設定">⚙</button>
+  </header>
+
+  <main>
+    <!-- ============ 記録画面 ============ -->
+    <section class="screen active" id="screen-record">
+      <div id="recordBanners"></div>
+
+      <div class="card">
+        <h2>🌅 朝の尿の色</h2>
+        <div class="sub">いちばん近い色を1つ選んでください</div>
+        <div class="urine-grid" id="urineGrid"></div>
+      </div>
+
+      <div class="card">
+        <h2>🩺 きょうの様子</h2>
+        <div class="sub">あてはまるものに「はい」を選んでください</div>
+        <div id="symptomList"></div>
+      </div>
+
+      <div class="card">
+        <h2>✍️ ひとことメモ<span style="font-weight:400;font-size:14px;color:var(--ink-soft);"> （任意）</span></h2>
+        <textarea id="noteInput" placeholder="気になったことがあれば（なくても大丈夫です）"></textarea>
+      </div>
+
+      <button class="btn" id="saveBtn">きょうの記録をつける</button>
+      <p class="hint" id="savedHint" style="text-align:center;"></p>
+    </section>
+
+    <!-- ============ 予定画面 ============ -->
+    <section class="screen" id="screen-schedule">
+      <div id="schedWarnings"></div>
+
+      <div class="card">
+        <h2>📅 これからの予定</h2>
+        <div class="sub">検査・治療の日を登録しておきましょう</div>
+        <div id="schedList"></div>
+      </div>
+
+      <div class="card">
+        <h2>＋ 予定を追加</h2>
+        <label class="fld">種類</label>
+        <select id="schType">
+          <option value="bcg">BCG膀胱内注入</option>
+          <option value="cystoscopy">膀胱鏡検査</option>
+          <option value="cytology">尿細胞診</option>
+        </select>
+        <label class="fld">日にち</label>
+        <input type="date" id="schDate">
+        <label class="fld">メモ（任意）</label>
+        <input type="text" id="schNote" placeholder="時間・持ち物など">
+        <div style="height:14px;"></div>
+        <button class="btn" id="schAddBtn">この予定を登録する</button>
+      </div>
+    </section>
+
+    <!-- ============ 履歴画面 ============ -->
+    <section class="screen" id="screen-history">
+      <div id="histWarnings"></div>
+      <div class="card">
+        <h2>📖 これまでの記録</h2>
+        <div class="sub">新しい順に表示しています</div>
+        <div id="histList"></div>
+      </div>
+    </section>
+
+    <!-- ============ まとめ画面 ============ -->
+    <section class="screen" id="screen-summary">
+      <div class="card">
+        <h2>🏥 診察用のまとめ</h2>
+        <div class="sub">直近90日間の記録です。診察のときに画面をお見せください</div>
+        <div id="summaryStats"></div>
+      </div>
+
+      <div class="card">
+        <h2>📈 尿の色の推移</h2>
+        <div class="sub">数字が大きいほど色が濃い／血が混じっています</div>
+        <div class="chart-wrap"><div id="chart"></div></div>
+        <div class="legend">
+          <span><i style="background:#2f4f43"></i>尿の色レベル(1〜7)</span>
+          <span><i style="background:#c9683f"></i>症状のあった日</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📝 症状が出た日</h2>
+        <div id="symptomLog"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn secondary" id="csvBtn">CSVで書き出す</button>
+        <button class="btn ghost" id="jsonBtn">バックアップ(JSON)</button>
+      </div>
+      <div style="height:10px;"></div>
+      <button class="btn ghost" id="importBtn">バックアップから復元</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none;">
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-screen="record" class="active"><span class="ic">📝</span>きろく</button>
+    <button data-screen="schedule"><span class="ic">📅</span>よてい</button>
+    <button data-screen="history"><span class="ic">📖</span>りれき</button>
+    <button data-screen="summary"><span class="ic">🏥</span>まとめ</button>
+  </nav>
+</div>
+
+<!-- ねぎらいトースト -->
+<div class="toast" id="toast"></div>
+
+<!-- 全画面アラート -->
+<div class="overlay" id="alertOverlay">
+  <div class="alert-box" id="alertBox">
+    <div class="ico" id="alertIco">📞</div>
+    <h2 id="alertTitle"></h2>
+    <p id="alertMsg"></p>
+    <div class="hosp" id="alertHosp"></div>
+    <a class="tel" id="alertTel" href="#">📞 病院に電話する</a>
+    <button class="btn ghost" id="alertClose">とじる</button>
+  </div>
+</div>
+
+<!-- 設定モーダル -->
+<div class="modal" id="settingsModal">
+  <div class="sheet">
+    <h2>⚙ 設定</h2>
+    <label class="fld">かかりつけ病院の名前</label>
+    <input type="text" id="setHospName" placeholder="〇〇病院 泌尿器科">
+    <label class="fld">病院の電話番号</label>
+    <input type="tel" id="setHospPhone" placeholder="03-0000-0000">
+    <label class="fld" style="margin-top:16px;">
+      <input type="checkbox" id="setNotify" style="width:auto;transform:scale(1.4);margin-right:8px;vertical-align:middle;">
+      検査日が近づいたら通知を受け取る
+    </label>
+    <div class="hint">通知を使うには、この後に表示される許可のお願いで「許可」を押してください。</div>
+    <div class="btn-row">
+      <button class="btn secondary" id="setCancel">とじる</button>
+      <button class="btn" id="setSave">保存する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   見張り番 — 膀胱癌術後サーベイランス（単一HTML / localStorage）
+   ============================================================ */
+
+/* ---------- 定数 ---------- */
+// 尿色7段階。realistic な尿色をCSSで再現
+const URINE = [
+  {lvl:1, name:"淡い黄色", desc:"うすい麦わら色", color:"#f4ecc0"},
+  {lvl:2, name:"黄色",     desc:"ふつうの尿の色", color:"#eddd6e"},
+  {lvl:3, name:"濃い黄色", desc:"やや濃いめ",     color:"#e2c53a"},
+  {lvl:4, name:"琥珀色",   desc:"茶色がかった濃さ",color:"#cf9a1f"},
+  {lvl:5, name:"オレンジ", desc:"だいだい色",     color:"#d97b2b"},
+  {lvl:6, name:"ピンク・赤みがある", desc:"血が少し混じった色",color:"#cf7d78"},
+  {lvl:7, name:"あきらかな血尿", desc:"赤〜赤褐色",  color:"#a23b32"}
+];
+
+const SYMPTOMS = [
+  {key:"pain",      label:"排尿のときの痛み"},
+  {key:"frequency", label:"トイレの回数が増えた"},
+  {key:"residual",  label:"残尿感（出きらない感じ）"},
+  {key:"fever",     label:"37.5度以上の熱"},
+  {key:"backpain",  label:"腰や背中の痛み"}
+];
+
+const SCHED_TYPES = {
+  bcg:        {name:"BCG膀胱内注入", icon:"💧"},
+  cystoscopy: {name:"膀胱鏡検査",     icon:"🔎"},
+  cytology:   {name:"尿細胞診",       icon:"🧪"}
+};
+
+const PRAISE = [
+  "きょうもおつかれさまです 🍵",
+  "記録できました。ありがとうございます",
+  "毎日の記録がお守りになります",
+  "つづけていて、えらいです",
+  "ゆっくり休んでくださいね",
+  "きょうも一日、おつかれさまでした"
+];
+
+/* ---------- ストレージ ---------- */
+const KEY = "mihariban_v1";
+function load(){
+  try{
+    const d = JSON.parse(localStorage.getItem(KEY));
+    if(d) return Object.assign(defaultData(), d);
+  }catch(e){}
+  return defaultData();
+}
+function defaultData(){
+  return {records:{}, schedules:[], settings:{hospName:"", hospPhone:"", notify:false}, lastCystoscopy:null};
+}
+function save(){ localStorage.setItem(KEY, JSON.stringify(DB)); }
+let DB = load();
+
+/* ---------- ユーティリティ ---------- */
+function todayStr(){ const d=new Date(); return fmt(d); }
+function fmt(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function parseDate(s){ const p=s.split("-"); return new Date(+p[0],+p[1]-1,+p[2]); }
+function daysBetween(a,b){ return Math.round((parseDate(b)-parseDate(a))/86400000); }
+function jpDate(s){ const d=parseDate(s); const w=["日","月","火","水","木","金","土"][d.getDay()]; return (d.getMonth()+1)+"/"+d.getDate()+"("+w+")"; }
+function jpDateFull(s){ const d=parseDate(s); return d.getFullYear()+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日"; }
+
+/* 記録中の一時状態 */
+let draft = {urineLevel:null, symptoms:{}, note:""};
+function resetDraftFromToday(){
+  const r = DB.records[todayStr()];
+  draft = {urineLevel:null, symptoms:{}, note:""};
+  SYMPTOMS.forEach(s=>draft.symptoms[s.key]=false);
+  if(r){
+    draft.urineLevel = r.urineLevel ?? null;
+    draft.note = r.note || "";
+    SYMPTOMS.forEach(s=>draft.symptoms[s.key]=!!(r.symptoms && r.symptoms[s.key]));
+  }
+}
+
+/* ============================================================
+   記録画面
+   ============================================================ */
+function renderUrine(){
+  const grid = document.getElementById("urineGrid");
+  grid.innerHTML = "";
+  URINE.forEach(u=>{
+    const t = document.createElement("button");
+    t.className = "urine-tile" + (draft.urineLevel===u.lvl ? " selected":"");
+    t.innerHTML =
+      '<div class="swatch" style="background:'+u.color+'"></div>'+
+      '<div><div class="lvl">'+u.lvl+'　'+u.name+'</div>'+
+      '<div class="nm">'+u.desc+'</div></div>'+
+      '<div class="check">✓</div>';
+    t.onclick = ()=>{
+      draft.urineLevel = u.lvl;
+      renderUrine();
+      if(u.lvl>=6){ showUrineAlert(u.lvl); }
+    };
+    grid.appendChild(t);
+  });
+}
+
+function renderSymptoms(){
+  const list = document.getElementById("symptomList");
+  list.innerHTML = "";
+  SYMPTOMS.forEach(s=>{
+    const row = document.createElement("div");
+    row.className = "symptom";
+    const val = draft.symptoms[s.key];
+    row.innerHTML =
+      '<div class="name">'+s.label+'</div>'+
+      '<div class="toggle">'+
+        '<button class="'+(val===false?"on-no":"")+'" data-v="no">いいえ</button>'+
+        '<button class="'+(val===true?"on-yes":"")+'" data-v="yes">はい</button>'+
+      '</div>';
+    const [noBtn,yesBtn] = row.querySelectorAll(".toggle button");
+    noBtn.onclick = ()=>{ draft.symptoms[s.key]=false; renderSymptoms(); };
+    yesBtn.onclick = ()=>{ draft.symptoms[s.key]=true; renderSymptoms(); checkPriorityAlert(); };
+    list.appendChild(row);
+  });
+}
+
+// 腰背部痛＋発熱 → 最優先アラート（記録前でも即案内）
+function checkPriorityAlert(){
+  if(draft.symptoms.backpain && draft.symptoms.fever){
+    showPriorityAlert();
+  }
+}
+
+function renderRecordBanners(){
+  const box = document.getElementById("recordBanners");
+  box.innerHTML = "";
+  upcomingSchedBanners().forEach(b=>box.appendChild(b));
+  // 今日すでに記録済みの案内
+  if(DB.records[todayStr()]){
+    const b=document.createElement("div");
+    b.className="banner info";
+    b.innerHTML='<span class="bico">✅</span><div>きょうの記録は保存済みです。修正して上書きもできます。</div>';
+    box.appendChild(b);
+  }
+}
+
+/* ============================================================
+   アラート
+   ============================================================ */
+function openOverlay({priority,title,msg,icon}){
+  document.getElementById("alertIco").textContent = icon || "📞";
+  document.getElementById("alertTitle").textContent = title;
+  document.getElementById("alertMsg").textContent = msg;
+  document.getElementById("alertBox").classList.toggle("priority", !!priority);
+  const hosp = DB.settings.hospName, phone = DB.settings.hospPhone;
+  document.getElementById("alertHosp").textContent = hosp ? ("かかりつけ："+hosp) : "";
+  const tel = document.getElementById("alertTel");
+  if(phone){ tel.href = "tel:"+phone.replace(/[^0-9+]/g,""); tel.style.display="flex"; tel.textContent="📞 "+phone+" に電話する"; }
+  else { tel.href="#"; tel.style.display="flex"; tel.textContent="📞 病院の電話番号を設定する"; tel.onclick=(e)=>{e.preventDefault();closeOverlay();openSettings();}; }
+  document.getElementById("alertOverlay").classList.add("show");
+}
+function closeOverlay(){ document.getElementById("alertOverlay").classList.remove("show"); }
+
+function showUrineAlert(lvl){
+  openOverlay({
+    priority:true, icon:"📞",
+    title:"本日中に泌尿器科へ連絡しましょう",
+    msg:"尿に血が混じっている可能性があります。あわてなくて大丈夫です。今日のうちに、かかりつけの泌尿器科へお電話でご相談ください。"
+  });
+}
+function showPriorityAlert(){
+  openOverlay({
+    priority:true, icon:"📞",
+    title:"できるだけ早く受診しましょう",
+    msg:"腰・背中の痛みと発熱が重なっています。腎臓の炎症など、早めの診察が安心です。かかりつけの泌尿器科、または受診先へご連絡ください。"
+  });
+}
+
+/* ============================================================
+   予定
+   ============================================================ */
+function upcomingSchedBanners(){
+  const out=[];
+  const t=todayStr();
+  DB.schedules.forEach(s=>{
+    const diff = daysBetween(t, s.date);
+    if(diff===7 || diff===1){
+      const b=document.createElement("div");
+      b.className="banner info";
+      const when = diff===1?"明日":"1週間後";
+      b.innerHTML='<span class="bico">'+SCHED_TYPES[s.type].icon+'</span><div><b>'+when+'</b>に「'+SCHED_TYPES[s.type].name+'」の予定です（'+jpDate(s.date)+'）</div>';
+      out.push(b);
+    }
+  });
+  // 膀胱鏡90日ルール
+  const cw = cystoscopyWarning();
+  if(cw){ const b=document.createElement("div"); b.className="banner warn"; b.innerHTML='<span class="bico">🗓️</span><div>'+cw+'</div>'; out.push(b); }
+  return out;
+}
+
+// 直近の膀胱鏡（記録済み）から次回未登録のまま90日
+function cystoscopyWarning(){
+  const done = DB.schedules.filter(s=>s.type==="cystoscopy" && daysBetween(s.date,todayStr())>=0)
+                           .sort((a,b)=>b.date.localeCompare(a.date));
+  const future = DB.schedules.some(s=>s.type==="cystoscopy" && daysBetween(todayStr(),s.date)>0);
+  if(future) return null;
+  if(done.length){
+    const since = daysBetween(done[0].date, todayStr());
+    if(since>=90) return "前回の膀胱鏡検査から"+since+"日たっています。次回検査の予約を確認してください。";
+  }
+  return null;
+}
+
+function renderSchedule(){
+  // 警告
+  const wbox=document.getElementById("schedWarnings"); wbox.innerHTML="";
+  const cw=cystoscopyWarning();
+  if(cw){ const b=document.createElement("div"); b.className="banner warn"; b.innerHTML='<span class="bico">🗓️</span><div>'+cw+'</div>'; wbox.appendChild(b); }
+
+  const list=document.getElementById("schedList");
+  list.innerHTML="";
+  const sorted=[...DB.schedules].sort((a,b)=>a.date.localeCompare(b.date));
+  const future=sorted.filter(s=>daysBetween(todayStr(),s.date)>=0);
+  const shown = future.length?future:sorted.slice(-5).reverse();
+  if(!sorted.length){ list.innerHTML='<div class="empty">まだ予定がありません。<br>下の「予定を追加」から登録できます。</div>'; return; }
+  (future.length?future:sorted.reverse()).forEach(s=>{
+    const diff=daysBetween(todayStr(),s.date);
+    const item=document.createElement("div");
+    item.className="sched-item";
+    let cd, cls="countdown";
+    if(diff>0){ cd="あと"+diff+"日"; if(diff<=7)cls+=" soon"; }
+    else if(diff===0){ cd="きょう"; cls+=" soon"; }
+    else { cd=(-diff)+"日前"; cls+=" past"; }
+    item.innerHTML=
+      '<div class="stype">'+SCHED_TYPES[s.type].icon+'</div>'+
+      '<div class="sinfo"><div class="sname">'+SCHED_TYPES[s.type].name+'</div>'+
+        '<div class="sdate">'+jpDateFull(s.date)+' '+jpDate(s.date).slice(-3)+(s.note?'　'+escapeHtml(s.note):'')+'</div>'+
+        '<span class="'+cls+'">'+cd+'</span></div>'+
+      '<button class="sdel" aria-label="削除">🗑</button>';
+    item.querySelector(".sdel").onclick=()=>{
+      if(confirm("この予定を削除しますか？")){ DB.schedules=DB.schedules.filter(x=>x.id!==s.id); save(); renderSchedule(); renderRecordBanners(); }
+    };
+    list.appendChild(item);
+  });
+}
+
+/* ============================================================
+   履歴 + 2日連続症状の黄色警告
+   ============================================================ */
+// 各日付について、前日も同じ症状が「はい」なら警告フラグ
+function twoDayFlags(){
+  const dates = Object.keys(DB.records).sort();
+  const flags={}; // date -> [symptomKey...]
+  SYMPTOMS.forEach(sym=>{
+    for(let i=1;i<dates.length;i++){
+      const d0=dates[i-1], d1=dates[i];
+      if(daysBetween(d0,d1)!==1) continue;
+      const r0=DB.records[d0], r1=DB.records[d1];
+      if(r0.symptoms && r1.symptoms && r0.symptoms[sym.key] && r1.symptoms[sym.key]){
+        (flags[d1]=flags[d1]||[]).push(sym.label);
+      }
+    }
+  });
+  return flags;
+}
+
+function renderHistory(){
+  const flags=twoDayFlags();
+  const wbox=document.getElementById("histWarnings"); wbox.innerHTML="";
+  const warnDates=Object.keys(flags).filter(d=>daysBetween(d,todayStr())<=7).sort().reverse();
+  if(warnDates.length){
+    const uniq=new Set(); warnDates.forEach(d=>flags[d].forEach(l=>uniq.add(l)));
+    const b=document.createElement("div");
+    b.className="banner warn";
+    b.innerHTML='<span class="bico">💛</span><div>2日つづいている症状があります：<b>'+[...uniq].join("・")+'</b><br>次の診察でお医者さんにお伝えください。</div>';
+    wbox.appendChild(b);
+  }
+
+  const list=document.getElementById("histList");
+  list.innerHTML="";
+  const dates=Object.keys(DB.records).sort().reverse();
+  if(!dates.length){ list.innerHTML='<div class="empty">まだ記録がありません。<br>「きろく」から最初の記録をつけましょう。</div>'; return; }
+  dates.forEach(d=>{
+    const r=DB.records[d];
+    const row=document.createElement("div");
+    row.className="hist-row";
+    const u=r.urineLevel?URINE[r.urineLevel-1]:null;
+    let tags="";
+    if(u && r.urineLevel>=6) tags+='<span class="tag alerttag">尿色レベル'+r.urineLevel+'</span>';
+    else if(u) tags+='<span class="tag">尿色レベル'+r.urineLevel+'</span>';
+    SYMPTOMS.forEach(s=>{ if(r.symptoms && r.symptoms[s.key]){
+      const isWarn = flags[d] && flags[d].includes(s.label);
+      tags+='<span class="tag '+(isWarn?"warntag":"")+'">'+(isWarn?"💛":"")+s.label+'</span>';
+    }});
+    if(r.symptoms && r.symptoms.backpain && r.symptoms.fever) tags='<span class="tag alerttag">腰背部痛＋発熱</span>'+tags;
+    if(!tags) tags='<span class="tag" style="background:#eef0ea;color:#8a8a7c">症状なし</span>';
+    if(r.note) tags+='<span class="tag" style="background:#f0ece0;color:#7a7566">📝'+escapeHtml(r.note.slice(0,12))+(r.note.length>12?"…":"")+'</span>';
+    row.innerHTML=
+      '<div class="hist-date">'+jpDate(d)+'</div>'+
+      '<div class="dot" style="background:'+(u?u.color:"#eee")+'"></div>'+
+      '<div class="hist-tags">'+tags+'</div>';
+    list.appendChild(row);
+  });
+}
+
+/* ============================================================
+   まとめ（グラフ + CSV）
+   ============================================================ */
+function last90(){
+  const out=[];
+  const dates=Object.keys(DB.records).sort();
+  return dates.filter(d=>daysBetween(d,todayStr())<=90 && daysBetween(d,todayStr())>=0);
+}
+
+function renderSummary(){
+  const dates=last90();
+  // 統計
+  const stats=document.getElementById("summaryStats");
+  const withData=dates.filter(d=>DB.records[d].urineLevel);
+  const symDays=dates.filter(d=>{const s=DB.records[d].symptoms||{};return SYMPTOMS.some(x=>s[x.key]);});
+  const alertDays=dates.filter(d=>DB.records[d].urineLevel>=6);
+  stats.innerHTML=
+    '<div class="kv"><span>記録した日数</span><b>'+dates.length+'日</b></div>'+
+    '<div class="kv"><span>尿色レベル6以上の日</span><b>'+alertDays.length+'日</b></div>'+
+    '<div class="kv"><span>なにか症状のあった日</span><b>'+symDays.length+'日</b></div>';
+
+  drawChart(dates);
+
+  // 症状ログ
+  const log=document.getElementById("symptomLog");
+  const symDates=dates.filter(d=>{const s=DB.records[d].symptoms||{};return SYMPTOMS.some(x=>s[x.key]);}).sort().reverse();
+  if(!symDates.length){ log.innerHTML='<div class="empty">この期間、記録された症状はありません。</div>'; }
+  else{
+    log.innerHTML="";
+    symDates.forEach(d=>{
+      const s=DB.records[d].symptoms;
+      const names=SYMPTOMS.filter(x=>s[x.key]).map(x=>x.label);
+      const combo=(s.backpain&&s.fever);
+      const row=document.createElement("div");
+      row.className="hist-row";
+      row.innerHTML='<div class="hist-date">'+jpDate(d)+'</div><div class="hist-tags">'+
+        (combo?'<span class="tag alerttag">腰背部痛＋発熱</span>':'')+
+        names.map(n=>'<span class="tag">'+n+'</span>').join("")+'</div>';
+      log.appendChild(row);
+    });
+  }
+}
+
+function drawChart(dates){
+  const box=document.getElementById("chart");
+  const pts=dates.map(d=>({d, v:DB.records[d].urineLevel||null, alert:(DB.records[d].symptoms&&SYMPTOMS.some(x=>DB.records[d].symptoms[x.key]))}))
+                 .filter(p=>p.v!==null);
+  if(pts.length<1){ box.innerHTML='<div class="empty">グラフを描くには尿の色の記録が必要です。</div>'; return; }
+  const W=Math.max(320, pts.length*36+60), H=240, padL=34, padR=14, padT=16, padB=40;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const n=pts.length;
+  const x=i=> n===1? padL+plotW/2 : padL + plotW*i/(n-1);
+  const y=v=> padT + plotH*(7-v)/6;   // 1(下)〜7(上)
+  let grid="", labels="";
+  for(let lv=1;lv<=7;lv++){
+    const yy=y(lv);
+    grid+='<line x1="'+padL+'" y1="'+yy+'" x2="'+(W-padR)+'" y2="'+yy+'" stroke="#e6e0d0" stroke-width="1"/>';
+    labels+='<text x="'+(padL-6)+'" y="'+(yy+4)+'" font-size="11" fill="#9a978c" text-anchor="end">'+lv+'</text>';
+    // 色見本の小さなドット（左端）
+    grid+='<rect x="'+(padL-30)+'" y="'+(yy-5)+'" width="10" height="10" rx="2" fill="'+URINE[lv-1].color+'"/>';
+  }
+  let poly=pts.map((p,i)=>x(i)+","+y(p.v)).join(" ");
+  let line='<polyline points="'+poly+'" fill="none" stroke="#2f4f43" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+  let dots="", xlabels="";
+  const step=Math.ceil(n/8);
+  pts.forEach((p,i)=>{
+    const isAlert=p.v>=6;
+    const c=isAlert?"#a23b32":"#2f4f43";
+    dots+='<circle cx="'+x(i)+'" cy="'+y(p.v)+'" r="'+(isAlert?5:3.5)+'" fill="'+c+'"/>';
+    if(p.alert) dots+='<circle cx="'+x(i)+'" cy="'+(H-padB+12)+'" r="3" fill="#c9683f"/>';
+    if(i%step===0 || i===n-1){
+      const dd=parseDate(p.d);
+      xlabels+='<text x="'+x(i)+'" y="'+(H-padB+28)+'" font-size="10" fill="#9a978c" text-anchor="middle">'+(dd.getMonth()+1)+'/'+dd.getDate()+'</text>';
+    }
+  });
+  box.innerHTML='<svg class="chart" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+
+    grid+labels+line+dots+xlabels+
+    '<text x="'+padL+'" y="'+(H-2)+'" font-size="10" fill="#c9683f">● 下の点＝症状があった日</text>'+
+    '</svg>';
+}
+
+/* ============================================================
+   エクスポート
+   ============================================================ */
+function exportCSV(){
+  const rows=[["日付","尿色レベル","尿色の名前","排尿時痛","頻尿悪化","残尿感","発熱37.5+","腰背部痛","腰背部痛＋発熱","メモ"]];
+  Object.keys(DB.records).sort().forEach(d=>{
+    const r=DB.records[d], s=r.symptoms||{};
+    rows.push([
+      d,
+      r.urineLevel||"",
+      r.urineLevel?URINE[r.urineLevel-1].name:"",
+      s.pain?"はい":"", s.frequency?"はい":"", s.residual?"はい":"", s.fever?"はい":"", s.backpain?"はい":"",
+      (s.backpain&&s.fever)?"該当":"",
+      (r.note||"").replace(/"/g,'""')
+    ]);
+  });
+  const csv="﻿"+rows.map(r=>r.map(c=>'"'+String(c)+'"').join(",")).join("\r\n");
+  download("見張り番_記録_"+todayStr()+".csv", csv, "text/csv");
+  toast("CSVを書き出しました");
+}
+function exportJSON(){
+  download("見張り番_バックアップ_"+todayStr()+".json", JSON.stringify(DB,null,2), "application/json");
+  toast("バックアップを書き出しました");
+}
+function download(name, content, mime){
+  const blob=new Blob([content],{type:mime+";charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function importJSON(file){
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const d=JSON.parse(e.target.result);
+      if(!d.records) throw new Error("形式が違います");
+      if(!confirm("バックアップから復元します。今のデータは置きかえられます。よろしいですか？")) return;
+      DB=Object.assign(defaultData(), d);
+      save(); resetDraftFromToday(); renderAll();
+      toast("復元しました");
+    }catch(err){ alert("このファイルは読み込めませんでした。"); }
+  };
+  reader.readAsText(file);
+}
+
+/* ============================================================
+   保存 / ねぎらい
+   ============================================================ */
+function saveRecord(){
+  if(draft.urineLevel===null && !SYMPTOMS.some(s=>draft.symptoms[s.key]) && !draft.note.trim()){
+    toast("尿の色をえらぶと記録できます");
+    return;
+  }
+  DB.records[todayStr()]={
+    urineLevel:draft.urineLevel,
+    symptoms:Object.assign({},draft.symptoms),
+    note:draft.note.trim(),
+    ts:Date.now()
+  };
+  save();
+  // アラート再確認（保存の瞬間に念のため）
+  if(draft.symptoms.backpain && draft.symptoms.fever){ showPriorityAlert(); }
+  else if(draft.urineLevel>=6){ showUrineAlert(draft.urineLevel); }
+  else { toast(PRAISE[Math.floor(Math.random()*PRAISE.length)]); }
+  document.getElementById("savedHint").textContent="きょうの記録を保存しました（"+jpDateFull(todayStr())+"）";
+  renderRecordBanners(); renderHistory(); renderSummary(); renderSchedule();
+}
+
+let toastTimer=null;
+function toast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove("show"),2600);
+}
+
+/* ============================================================
+   ナビ / 設定 / 通知
+   ============================================================ */
+function showScreen(name){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById("screen-"+name).classList.add("active");
+  document.querySelectorAll("nav.tabbar button").forEach(b=>b.classList.toggle("active", b.dataset.screen===name));
+  window.scrollTo(0,0);
+  if(name==="history") renderHistory();
+  if(name==="summary") renderSummary();
+  if(name==="schedule") renderSchedule();
+  if(name==="record"){ renderRecordBanners(); }
+}
+
+function openSettings(){
+  document.getElementById("setHospName").value=DB.settings.hospName||"";
+  document.getElementById("setHospPhone").value=DB.settings.hospPhone||"";
+  document.getElementById("setNotify").checked=!!DB.settings.notify;
+  document.getElementById("settingsModal").classList.add("show");
+}
+function closeSettings(){ document.getElementById("settingsModal").classList.remove("show"); }
+function saveSettings(){
+  DB.settings.hospName=document.getElementById("setHospName").value.trim();
+  DB.settings.hospPhone=document.getElementById("setHospPhone").value.trim();
+  const notify=document.getElementById("setNotify").checked;
+  DB.settings.notify=notify;
+  save();
+  if(notify && "Notification" in window && Notification.permission==="default"){
+    Notification.requestPermission().then(()=>checkNotifications());
+  }
+  closeSettings(); toast("設定を保存しました"); renderRecordBanners();
+}
+
+// 検査日の7日前・前日に通知（1日1回）
+function checkNotifications(){
+  if(!DB.settings.notify) return;
+  if(!("Notification" in window) || Notification.permission!=="granted") return;
+  const t=todayStr();
+  const notified=JSON.parse(localStorage.getItem("mihariban_notified")||"{}");
+  DB.schedules.forEach(s=>{
+    const diff=daysBetween(t,s.date);
+    if(diff===7||diff===1){
+      const id=s.id+"_"+t;
+      if(!notified[id]){
+        const when=diff===1?"明日":"1週間後";
+        try{ new Notification("見張り番", {body:when+"は「"+SCHED_TYPES[s.type].name+"」の予定です（"+jpDate(s.date)+"）"}); }catch(e){}
+        notified[id]=1;
+      }
+    }
+  });
+  localStorage.setItem("mihariban_notified", JSON.stringify(notified));
+}
+
+/* ============================================================
+   共通
+   ============================================================ */
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+function renderAll(){
+  renderUrine(); renderSymptoms(); renderRecordBanners();
+  document.getElementById("noteInput").value=draft.note;
+  document.getElementById("savedHint").textContent = DB.records[todayStr()] ? "きょうの記録は保存済みです" : "";
+}
+
+/* ---------- 初期化 ---------- */
+function init(){
+  resetDraftFromToday();
+  renderAll();
+
+  document.querySelectorAll("nav.tabbar button").forEach(b=>b.onclick=()=>showScreen(b.dataset.screen));
+  document.getElementById("saveBtn").onclick=saveRecord;
+  document.getElementById("noteInput").oninput=e=>draft.note=e.target.value;
+
+  document.getElementById("alertClose").onclick=closeOverlay;
+  document.getElementById("gearBtn").onclick=openSettings;
+  document.getElementById("setSave").onclick=saveSettings;
+  document.getElementById("setCancel").onclick=closeSettings;
+
+  // 予定追加
+  document.getElementById("schDate").value=todayStr();
+  document.getElementById("schAddBtn").onclick=()=>{
+    const type=document.getElementById("schType").value;
+    const date=document.getElementById("schDate").value;
+    const note=document.getElementById("schNote").value.trim();
+    if(!date){ toast("日にちを選んでください"); return; }
+    DB.schedules.push({id:"s"+Date.now(), type, date, note});
+    save();
+    document.getElementById("schNote").value="";
+    renderSchedule(); renderRecordBanners(); toast("予定を登録しました"); checkNotifications();
+  };
+
+  // エクスポート
+  document.getElementById("csvBtn").onclick=exportCSV;
+  document.getElementById("jsonBtn").onclick=exportJSON;
+  document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
+  document.getElementById("importFile").onchange=e=>{ if(e.target.files[0]) importJSON(e.target.files[0]); e.target.value=""; };
+
+  checkNotifications();
+
+  // 初回、病院電話が未設定なら軽く案内
+  if(!DB.settings.hospPhone){
+    setTimeout(()=>toast("⚙設定から病院の電話番号を登録できます"),1200);
+  }
+}
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>
